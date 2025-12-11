@@ -2,6 +2,8 @@
 
 An interactive Streamlit dashboard for analyzing insurance premium forecasts across US states, deployed on Snowflake.
 
+![Insurance Premium Forecasting Dashboard](screenshots/Insurance_Premium_forecasting.gif)
+
 ## 📋 Table of Contents
 
 - [Overview](#overview)
