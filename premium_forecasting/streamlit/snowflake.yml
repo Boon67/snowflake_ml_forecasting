@@ -1,0 +1,8 @@
+definition_version: 1
+streamlit:
+  name: insurance_premium_dashboard
+  title: "Insurance Premium Forecasting Dashboard"
+  query_warehouse: COMPUTE_WH
+  main_file: streamlit_app.py
+  stage: streamlit_stage
+  env_file: environment.yml
