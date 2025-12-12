@@ -6,4 +6,5 @@ dependencies:
   - pydeck
   - python=3.11.*
   - snowflake-snowpark-python=
+  - statsmodels
   - streamlit=1.51.0
