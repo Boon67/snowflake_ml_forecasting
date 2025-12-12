@@ -182,17 +182,135 @@ if forecast_summary is not None:
             with col4:
                 st.metric("Max Premium", f"${state_data['MAX_PREMIUM']:,.2f}")
             
-            # Additional metrics
-            if yoy_growth is not None and len(yoy_growth) > 0:
-                state_growth = yoy_growth[yoy_growth['STATE'] == selected_state]
-                if not state_growth.empty:
-                    col1, col2 = st.columns(2)
-                    with col1:
+            # Additional metrics row
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                price_range = state_data['MAX_PREMIUM'] - state_data['MIN_PREMIUM']
+                st.metric("Price Range", f"${price_range:,.2f}")
+            
+            with col2:
+                volatility = (state_data['PREMIUM_STDDEV'] / state_data['MEAN_PREMIUM'] * 100)
+                st.metric("Volatility (CV%)", f"{volatility:.1f}%")
+            
+            with col3:
+                if yoy_growth is not None and len(yoy_growth) > 0:
+                    state_growth = yoy_growth[yoy_growth['STATE'] == selected_state]
+                    if not state_growth.empty:
                         growth_val = state_growth.iloc[0]['YOY_GROWTH_PCT']
                         st.metric("YoY Growth", f"{growth_val:.2f}%", delta=f"{growth_val:.2f}%")
+                    else:
+                        st.metric("YoY Growth", "N/A")
+                else:
+                    st.metric("YoY Growth", "N/A")
+            
+            with col4:
+                # Calculate national rank
+                ranked = forecast_summary.sort_values('MEAN_PREMIUM', ascending=False).reset_index(drop=True)
+                rank = ranked[ranked['STATE'] == selected_state].index[0] + 1
+                st.metric("National Rank", f"#{rank} of {len(forecast_summary)}")
+            
+            # Comparison to National Average
+            st.markdown("---")
+            st.markdown("### 📊 Comparison to National Average")
+            
+            national_avg = forecast_summary['MEAN_PREMIUM'].mean()
+            diff_from_avg = state_data['MEAN_PREMIUM'] - national_avg
+            pct_diff = (diff_from_avg / national_avg) * 100
+            
+            col1, col2 = st.columns([1, 3])
+            with col1:
+                st.metric(
+                    "Difference from National Avg",
+                    f"${diff_from_avg:,.0f}",
+                    delta=f"{pct_diff:.1f}%"
+                )
+            
+            with col2:
+                if diff_from_avg < 0:
+                    status = "🟢 Below Average"
+                    status_color = "#d4edda"
+                elif diff_from_avg > 0:
+                    status = "🔴 Above Average"
+                    status_color = "#f8d7da"
+                else:
+                    status = "⚪ At Average"
+                    status_color = "#e2e3e5"
+                
+                st.markdown(f"""
+                <div style="background-color: {status_color}; padding: 20px; border-radius: 5px; text-align: center;">
+                    <h3 style="margin: 0;">Status: {status}</h3>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Premium Forecast Timeline
+            st.markdown("---")
+            st.markdown("### 📈 Premium Forecast Timeline")
+            
+            if predictions_12mo is not None and len(predictions_12mo) > 0:
+                # Filter predictions for selected state
+                state_predictions = predictions_12mo[predictions_12mo['SERIES'] == selected_state]
+                
+                if not state_predictions.empty:
+                    # Create timeline chart
+                    fig_timeline = go.Figure()
+                    
+                    # Add the forecast line
+                    fig_timeline.add_trace(go.Scatter(
+                        x=state_predictions['TS'],
+                        y=state_predictions['FORECAST'],
+                        mode='lines',
+                        name='Forecast',
+                        line=dict(color='#1f77b4', width=3)
+                    ))
+                    
+                    # Add confidence interval if available
+                    if 'UPPER_BOUND' in state_predictions.columns and 'LOWER_BOUND' in state_predictions.columns:
+                        fig_timeline.add_trace(go.Scatter(
+                            x=state_predictions['TS'],
+                            y=state_predictions['UPPER_BOUND'],
+                            mode='lines',
+                            name='Upper Bound',
+                            line=dict(width=0),
+                            showlegend=False
+                        ))
+                        
+                        fig_timeline.add_trace(go.Scatter(
+                            x=state_predictions['TS'],
+                            y=state_predictions['LOWER_BOUND'],
+                            mode='lines',
+                            name='Lower Bound',
+                            line=dict(width=0),
+                            fillcolor='rgba(31, 119, 180, 0.2)',
+                            fill='tonexty',
+                            showlegend=False
+                        ))
+                    
+                    fig_timeline.update_layout(
+                        title=f'Premium Forecast Timeline - {selected_state}',
+                        xaxis_title='Date',
+                        yaxis_title='Premium ($)',
+                        hovermode='x unified',
+                        height=400
+                    )
+                    
+                    st.plotly_chart(fig_timeline, use_container_width=True)
+                    
+                    # Forecast statistics
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        avg_forecast = state_predictions['FORECAST'].mean()
+                        st.metric("Average Forecast", f"${avg_forecast:,.2f}")
                     with col2:
-                        price_range = state_data['MAX_PREMIUM'] - state_data['MIN_PREMIUM']
-                        st.metric("Price Range", f"${price_range:,.2f}")
+                        trend = state_predictions['FORECAST'].iloc[-1] - state_predictions['FORECAST'].iloc[0]
+                        st.metric("Trend", f"${trend:,.2f}")
+                    with col3:
+                        forecast_vol = state_predictions['FORECAST'].std()
+                        st.metric("Forecast Volatility", f"${forecast_vol:,.2f}")
+                else:
+                    st.info(f"No forecast data available for {selected_state}")
+            else:
+                st.info("No 12-month prediction data available")
     
     # ========== TAB 4: Correlation Analysis ==========
     with tab4:
