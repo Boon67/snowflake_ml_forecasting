@@ -1,8 +1,18 @@
-definition_version: 1
-streamlit:
-  name: insurance_premium_dashboard
-  title: "Insurance Premium Forecasting Dashboard"
-  query_warehouse: COMPUTE_WH
-  main_file: streamlit_app.py
-  stage: streamlit_stage
-  env_file: environment.yml
+definition_version: 2
+entities:
+  insurance_premium_dashboard:
+    type: streamlit
+    identifier:
+      name: insurance_premium_dashboard
+    title: "Insurance Premium Forecasting Dashboard"
+    query_warehouse: COMPUTE_WH
+    main_file: streamlit_app.py
+    stage: streamlit_stage
+    artifacts:
+      - streamlit_app.py
+      - environment.yml
+      - config.py
+      - data_loader.py
+      - visualizations.py
+      - utils.py
+      - us_states_geojson.py

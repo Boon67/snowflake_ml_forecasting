@@ -14,6 +14,7 @@ An interactive Streamlit dashboard for analyzing insurance premium forecasts acr
 - [Deployment](#deployment)
 - [Data Requirements](#data-requirements)
 - [Configuration](#configuration)
+- [Architecture](#architecture)
 - [Troubleshooting](#troubleshooting)
 - [Technical Details](#technical-details)
 
@@ -154,6 +155,134 @@ GRANT USAGE ON WAREHOUSE COMPUTE_WH TO ROLE YOUR_ROLE;
 
 ---
 
+## 🏗️ Architecture
+
+### Modular Design Pattern
+
+The application follows a **separation of concerns** pattern with distinct modules:
+
+#### 1. **config.py** - Configuration Layer
+- **Metric Definitions**: Color scales, formats, display titles
+- **Table Options**: Database table configurations
+- **Constants**: State coordinates, app settings
+- **Single Source of Truth**: All configuration in one place
+
+#### 2. **data_loader.py** - Data Access Layer
+- **Snowpark Integration**: Connects to Snowflake using `get_active_session()`
+- **Data Loading**: `load_forecast_data()` fetches from three tables
+- **Data Preparation**: `prepare_map_data()` merges and calculates metrics
+- **Caching**: `@st.cache_data` for performance optimization
+- **Error Handling**: Graceful fallbacks for missing tables
+
+#### 3. **visualizations.py** - Presentation Layer
+- **PyDeck Maps**: `create_choropleth_map()` with GeoJSON rendering
+- **Plotly Charts**: `create_bar_chart()`, `create_time_series_chart()`
+- **Color Mapping**: `get_color_for_scale()` converts Plotly scales to RGB
+- **Consistent Styling**: Unified color schemes across visualizations
+
+#### 4. **utils.py** - UI Component Layer
+- **Sidebar Controls**: `render_sidebar_config()`, `render_dashboard_controls()`
+- **Summary Cards**: `display_summary_cards()` for key metrics
+- **Debug Info**: `display_data_validation()` for troubleshooting
+- **Reusable Components**: UI elements used across the app
+
+#### 5. **streamlit_app.py** - Application Layer
+- **Orchestration**: Imports and coordinates all modules
+- **Page Layout**: Defines application structure and flow
+- **Session Management**: Handles Snowpark session
+- **Error Boundaries**: Top-level exception handling
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. User opens app → streamlit_app.py                       │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 2. Load config → config.py (METRIC_CONFIG, TABLE_OPTIONS)  │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Render sidebar → utils.render_sidebar_config()          │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 4. Fetch data → data_loader.load_forecast_data()           │
+│    • premium_forecast_summary                               │
+│    • yoy_growth_all_states                                  │
+│    • premium_predictions_12months                           │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 5. Prepare map data → data_loader.prepare_map_data()       │
+│    • Merge tables                                           │
+│    • Calculate derived metrics                              │
+│    • Clean and validate                                     │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 6. Render visualizations                                    │
+│    • visualizations.create_choropleth_map()                 │
+│    • visualizations.create_bar_chart()                      │
+│    • visualizations.create_time_series_chart()              │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 7. Display summary cards → utils.display_summary_cards()   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Snowflake Deployment Model
+
+**V2 Definition Format** (`snowflake.yml`):
+```yaml
+definition_version: 2
+entities:
+  insurance_premium_dashboard:
+    type: streamlit
+    identifier:
+      name: insurance_premium_dashboard
+    main_file: streamlit_app.py
+    artifacts:
+      - streamlit_app.py
+      - config.py
+      - data_loader.py
+      - visualizations.py
+      - utils.py
+      - us_states_geojson.py
+      - environment.yml
+```
+
+**All modules uploaded together** - Snowflake supports local imports:
+```python
+from config import METRIC_CONFIG, TABLE_OPTIONS
+from data_loader import load_forecast_data
+from visualizations import create_choropleth_map
+```
+
+### Why Modular?
+
+**Scenario:** Add a new "Claims Ratio" metric
+
+**Monolithic Approach:**
+1. Find metric config buried in 1000+ line file
+2. Update color mapping function 300 lines away
+3. Modify tooltip logic 500 lines away
+4. Risk breaking existing code
+5. Hard to test changes
+
+**Modular Approach:**
+1. Edit `config.py` → Add to `METRIC_CONFIG`
+2. Done! App automatically:
+   - Shows new metric in dropdown
+   - Applies correct color scale
+   - Formats tooltips properly
+3. Easy to unit test
+4. No risk to other features
+
+---
+
 ## 🔧 Troubleshooting
 
 ### Blank or Dark Map
@@ -225,10 +354,19 @@ WHERE LENGTH(STATE) > 2;
 
 ## 📁 Project Structure
 
+### Modular Architecture
+
+The application uses a clean, modular structure for better maintainability and reusability:
+
 ```
 premium_forecasting/streamlit/
-├── streamlit_app.py          # Main app (130 KB with embedded GeoJSON)
-├── snowflake.yml             # Snow CLI config
+├── streamlit_app.py          # Main application (~115 lines)
+├── config.py                 # Configuration & constants
+├── data_loader.py            # Data loading & preparation
+├── visualizations.py         # Chart & map creation
+├── utils.py                  # UI components & utilities
+├── us_states_geojson.py      # Embedded GeoJSON data
+├── snowflake.yml             # V2 Snow CLI config
 ├── environment.yml           # Python dependencies
 ├── deploy.sh                 # Deployment script
 ├── README.md                 # This file
@@ -236,13 +374,41 @@ premium_forecasting/streamlit/
     └── Insurance_Premium_forecasting.gif
 ```
 
-### Required Files
+### Module Breakdown
 
-| File | Purpose | Size |
-|------|---------|------|
-| `streamlit_app.py` | Main application with embedded GeoJSON | 130 KB |
-| `snowflake.yml` | Snow CLI configuration | < 1 KB |
-| `environment.yml` | Python packages: streamlit, pandas, numpy, plotly, pydeck | < 1 KB |
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| `streamlit_app.py` | ~115 | Main orchestration and page layout |
+| `config.py` | ~70 | Metric configs, table options, constants |
+| `data_loader.py` | ~116 | Snowflake data access with caching |
+| `visualizations.py` | ~216 | PyDeck maps, Plotly charts, color scales |
+| `utils.py` | ~147 | Sidebar controls, debug info, UI cards |
+| `us_states_geojson.py` | ~15K | US states GeoJSON (CSP-compliant) |
+
+**Total:** ~670 lines of application code (excluding GeoJSON data)
+
+### Benefits of Modular Structure
+
+✅ **Maintainable** - Easy to find and fix issues, clear separation of concerns  
+✅ **Reusable** - Import modules in other apps, build component libraries  
+✅ **Testable** - Unit test individual functions, mock data easily  
+✅ **Collaborative** - Multiple devs work on different modules  
+✅ **Scalable** - Simple to add new metrics, charts, or features  
+
+### Adding a New Metric (Example)
+
+**Before (Monolithic):** Edit in 4-5 places across 200+ lines  
+**After (Modular):** Edit `config.py` only:
+
+```python
+"New Metric": {
+    'column': 'NEW_COLUMN',
+    'title': 'New Metric Title',
+    'format': ':.2f',
+    'color_scale': 'Greens'
+}
+```
+Done! The rest works automatically.
 
 ### Dependencies (environment.yml)
 
@@ -363,14 +529,21 @@ ALTER WAREHOUSE COMPUTE_WH SET AUTO_RESUME = TRUE;
 
 ## 📝 Version History
 
-**Version 2.0.0** (Current - December 2024)
+**Version 3.0.0** (Current - December 2024)
+- **Modular architecture** - 5 focused modules for maintainability
+- **V2 definition format** - Modern Snowflake CLI configuration
+- **Enhanced color scales** - RdYlGn with proper business logic mapping
+- **Improved tooltips** - Dynamic formatting (currency vs percentage)
+- **Dropdown table selector** - Easy switching between forecast tables
+
+**Version 2.0.0** (December 2024)
 - PyDeck GeoJsonLayer for full state shapes
-- Embedded GeoJSON (130 KB, single file)
-- Fixed tooltip rendering
-- CSP-compliant, no external dependencies
+- Embedded GeoJSON (CSP-compliant, no external dependencies)
+- Fixed tooltip rendering with proper value display
+- Dynamic color mapping across visualizations
 
 **Version 1.0.0** (November 2024)
-- Initial release with basic functionality
+- Initial monolithic release with basic functionality
 
 ---
 
